@@ -25,6 +25,7 @@ TOKEN = os.getenv("BOT_TOKEN", "").strip()
 DB_PATH = os.getenv("DATABASE_PATH", "saint_rewards.sqlite3")
 OWNER_ID = int(os.getenv("BOT_OWNER_ID", "0") or 0)
 STARTUP_IMAGE = Path(__file__).resolve().parent.parent / "assets" / "startup.png"
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -180,6 +181,26 @@ async def require_admin(update, context):
     return False
 
 
+async def reply_card(update: Update, filename: str, caption: str, reply_markup=None):
+    """Send a visual response when available, while preserving a text fallback."""
+    message = update.effective_message
+    image_path = ASSET_DIR / filename
+    if message and image_path.is_file():
+        with image_path.open("rb") as image:
+            if len(caption) <= 1024:
+                await message.reply_photo(
+                    photo=image,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+            else:
+                await message.reply_photo(photo=image, reply_markup=reply_markup)
+                await message.reply_text(caption, parse_mode=ParseMode.HTML)
+    elif message:
+        await message.reply_text(caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🎁 <b>SAINT REWARDS</b>\n"
@@ -191,23 +212,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Admins can award points and manage the reward shop."
     )
     keyboard = [[InlineKeyboardButton("⭐ My points", callback_data="my_points"), InlineKeyboardButton("🏆 Rewards", callback_data="rewards")]]
-    await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+    await reply_card(update, "startup.png", text, InlineKeyboardMarkup(keyboard))
 
 
 async def points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     balance = db.balance(update.effective_chat.id, user.id, user.full_name)
-    await update.effective_message.reply_text(f"⭐ {mention(user)} has <b>{balance}</b> points.", parse_mode=ParseMode.HTML)
+    await reply_card(update, "points.png", f"⭐ {mention(user)} has <b>{balance}</b> points.")
 
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = db.leaderboard(update.effective_chat.id)
     if not rows:
-        await update.effective_message.reply_text("No points have been awarded yet.")
+        await reply_card(update, "leaderboard.png", "No points have been awarded yet.")
         return
     text = ["🏆 <b>LEADERBOARD</b>", "━━━━━━━━━━━━━━━━━━"]
     text.extend(f"{i}. {html.escape(row['name'])} — <b>{row['balance']}</b> ⭐" for i, row in enumerate(rows, 1))
-    await update.effective_message.reply_text("\n".join(text), parse_mode=ParseMode.HTML)
+    await reply_card(update, "leaderboard.png", "\n".join(text))
 
 
 async def giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,10 +240,11 @@ async def giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prize = " ".join(context.args).strip()
     giveaway_id = db.create_giveaway(update.effective_chat.id, prize, update.effective_user.id)
     keyboard = [[InlineKeyboardButton("🎟️ Join giveaway", callback_data=f"join:{giveaway_id}")]]
-    await update.effective_message.reply_text(
+    await reply_card(
+        update,
+        "giveaway.png",
         f"🎁 <b>GIVEAWAY #{giveaway_id}</b>\nPrize: <b>{html.escape(prize)}</b>\n\nPress the button to enter. An admin can run /draw {giveaway_id} when ready.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        InlineKeyboardMarkup(keyboard),
     )
 
 
@@ -240,9 +262,10 @@ async def draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not entries:
         await update.effective_message.reply_text(f"🎁 Giveaway #{giveaway_row['id']} had no entries and was closed.")
         return
-    await update.effective_message.reply_text(
+    await reply_card(
+        update,
+        "winner.png",
         f"🎉 <b>WINNER!</b>\nPrize: <b>{html.escape(giveaway_row['prize'])}</b>\nWinner: {html.escape(winner['name'])}\nEntries: {len(entries)}",
-        parse_mode=ParseMode.HTML,
     )
 
 
@@ -261,11 +284,11 @@ async def award(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def rewards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = db.rewards(update.effective_chat.id)
     if not rows:
-        await update.effective_message.reply_text("The reward shop is empty. Admins can add rewards with /reward add name | cost.")
+        await reply_card(update, "rewards.png", "The reward shop is empty. Admins can add rewards with /reward add name | cost.")
         return
     text = ["🏆 <b>REWARD SHOP</b>", "━━━━━━━━━━━━━━━━━━"]
     text.extend(f"• {html.escape(row['name'])} — <b>{row['cost']}</b> ⭐\n  Redeem: <code>/redeem {html.escape(row['name'])}</code>" for row in rows)
-    await update.effective_message.reply_text("\n".join(text), parse_mode=ParseMode.HTML)
+    await reply_card(update, "rewards.png", "\n".join(text))
 
 
 async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
