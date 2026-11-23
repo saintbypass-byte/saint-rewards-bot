@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: saint-rewards-bot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_PATH
+        value: /tmp/saint_rewards.sqlite3
+      - key: BOT_OWNER_ID
+        value: "0"
+      - key: LOG_LEVEL
+        value: INFO
